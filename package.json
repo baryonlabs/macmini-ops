@@ -3,9 +3,46 @@
   "version": "0.1.0",
   "description": "Always-on operations agents for a macOS server: health checks, allow-listed self-healing, and LLM root-cause reports.",
   "type": "module",
-  "scripts": { "start": "node opsd.mjs", "test": "node --test test/*.test.mjs" },
-  "engines": { "node": ">=20" },
-  "repository": { "type": "git", "url": "git+https://github.com/baryonlabs/macmini-ops.git" },
+  "scripts": {
+    "start": "node opsd.mjs",
+    "demo": "node examples/demo/run.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/baryonlabs/macmini-ops.git"
+  },
   "author": "Baryon Labs",
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": [
+    "mac-mini",
+    "macos",
+    "launchd",
+    "self-healing",
+    "monitoring",
+    "sre",
+    "ops",
+    "llm",
+    "vllm",
+    "ollama",
+    "mcp",
+    "homelab"
+  ],
+  "homepage": "https://github.com/baryonlabs/macmini-ops#readme",
+  "bugs": "https://github.com/baryonlabs/macmini-ops/issues",
+  "files": [
+    "opsd.mjs",
+    "lib",
+    "agents",
+    "public",
+    "deploy",
+    "examples",
+    "config.example.json",
+    "README.md",
+    "README.ko.md",
+    "LICENSE"
+  ]
 }

@@ -1,0 +1,31 @@
+name: 🧩 New agent type
+description: Propose a new built-in agent type
+labels: ['type: agent', 'status: triage']
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Type name
+      placeholder: e.g. synology-nas, postgres, launchd-calendar
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: What does it check?
+    validations:
+      required: true
+  - type: textarea
+    id: remediation
+    attributes:
+      label: What may it fix automatically (and what must it never touch)?
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Requirements for built-in types
+      options:
+        - label: No runtime dependencies
+          required: true
+        - label: All actions go through ctx.remediate() (allow-list, cooldown, dry-run)
+          required: true
+        - label: I can contribute it with tests (or I'm asking someone else to)

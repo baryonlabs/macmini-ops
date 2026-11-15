@@ -1,0 +1,35 @@
+name: 🐛 Bug report
+description: Something does not work as documented
+labels: ['type: bug', 'status: triage']
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The relevant part of config.json (remove hostnames and secrets) and the commands you ran.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output of `node opsd.mjs once <agent-id>` or the error log
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: macmini-ops version / commit
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: macOS version, Node.js version, Mac model
+      placeholder: macOS 15.2, Node 22.11, Mac mini M4
+    validations:
+      required: true

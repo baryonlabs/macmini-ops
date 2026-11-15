@@ -16,16 +16,24 @@ export function parseDf(text) {
 }
 
 export default {
-  defaultName: '서버 관리',
+  nameKey: 'host.name',
   defaultIcon: '🖥️',
-  playbook: [
-    '- 감시 대상 launchd 서비스가 꺼져 있으면, 허용 목록(remediation.allow.kickstart)에 있는 것만 launchctl kickstart -k 로 다시 띄운다.',
-    '- 디스크 사용률이 diskWarnPct 이상이면 경고, diskCritPct 이상이면 심각. 정리 후보: docker system df, ~/Library/Caches.',
-    '- Docker Desktop과 Tailscale은 자동으로 재시작하지 않고 보고만 한다.',
-  ].join('\n'),
+  playbook: {
+    en: [
+      '- If a watched launchd service is down, restart it with launchctl kickstart -k only when it is on remediation.allow.kickstart.',
+      '- Disk usage >= diskWarnPct is a warning, >= diskCritPct is critical. Cleanup candidates: docker system df, ~/Library/Caches.',
+      '- Docker Desktop and Tailscale are reported, never restarted automatically.',
+    ].join('\n'),
+    ko: [
+      '- 감시 대상 launchd 서비스가 꺼져 있으면, 허용 목록(remediation.allow.kickstart)에 있는 것만 launchctl kickstart -k 로 다시 띄운다.',
+      '- 디스크 사용률이 diskWarnPct 이상이면 경고, diskCritPct 이상이면 심각. 정리 후보: docker system df, ~/Library/Caches.',
+      '- Docker Desktop과 Tailscale은 자동으로 재시작하지 않고 보고만 한다.',
+    ].join('\n'),
+  },
 
   async run(ctx) {
     const cfg = ctx.config;
+    const t = ctx.t;
     const findings = [];
     const actionsTaken = [];
     const evidence = [];
@@ -42,7 +50,8 @@ export default {
           info = parseLaunchctlPrint((await run('/bin/launchctl', ['print', `gui/${uid()}/${label}`])).stdout);
         }
         if (info.state !== 'running') {
-          findings.push(finding(`svc:${label}`, 'crit', `서비스 꺼짐: ${label}`, `state=${info.state} lastExit=${info.lastExit}${act.done ? '' : ` · 자동 재시작 안 함(${act.reason})`}`));
+          findings.push(finding(`svc:${label}`, 'crit', t('host.svcDown', { label }),
+            t('host.svcDetail', { state: info.state, lastExit: info.lastExit, note: act.done ? '' : t('host.noRestart', { reason: act.reason }) })));
         }
       }
       if (info.state === 'running') running += 1;
@@ -51,18 +60,20 @@ export default {
 
     const df = parseDf((await run('/bin/df', ['-k', cfg.diskPath || '/System/Volumes/Data'])).stdout);
     evidence.push(`disk: ${df.usedPct}% used, ${df.availGb}GB free`);
-    if (df.usedPct >= (cfg.diskCritPct ?? 92)) findings.push(finding('disk', 'crit', `디스크 ${df.usedPct}% 사용`, `남은 공간 ${df.availGb}GB`));
-    else if (df.usedPct >= (cfg.diskWarnPct ?? 85)) findings.push(finding('disk', 'warn', `디스크 ${df.usedPct}% 사용`, `남은 공간 ${df.availGb}GB`));
+    const diskTitle = t('host.disk', { pct: df.usedPct });
+    const diskDetail = t('host.diskDetail', { gb: df.availGb });
+    if (df.usedPct >= (cfg.diskCritPct ?? 92)) findings.push(finding('disk', 'crit', diskTitle, diskDetail));
+    else if (df.usedPct >= (cfg.diskWarnPct ?? 85)) findings.push(finding('disk', 'warn', diskTitle, diskDetail));
 
     const mem = (await run('/usr/bin/memory_pressure', ['-Q'])).stdout;
     const freePct = Number(/free percentage: (\d+)%/.exec(mem)?.[1] ?? -1);
     evidence.push(`memory free: ${freePct}%`);
-    if (freePct >= 0 && freePct < (cfg.memWarnFreePct ?? 10)) findings.push(finding('memory', 'warn', `여유 메모리 ${freePct}%`, 'memory_pressure 기준'));
+    if (freePct >= 0 && freePct < (cfg.memWarnFreePct ?? 10)) findings.push(finding('memory', 'warn', t('host.memory', { pct: freePct }), t('host.memoryDetail')));
 
     if (cfg.dockerBin) {
       const docker = await run(cfg.dockerBin, ['info', '--format', '{{.ServerVersion}}'], { env: cfg.dockerContext ? { DOCKER_CONTEXT: cfg.dockerContext } : {} });
       evidence.push(`docker: ${docker.ok ? docker.stdout.trim() : docker.stderr.trim().slice(0, 200)}`);
-      if (!docker.ok) findings.push(finding('docker', 'crit', 'Docker 응답 없음', '컨테이너로 돌리는 서비스도 함께 멈춥니다.'));
+      if (!docker.ok) findings.push(finding('docker', 'crit', t('host.docker'), t('host.dockerDetail')));
     }
 
     if (cfg.tailscale) {
@@ -72,11 +83,11 @@ export default {
         online = st.BackendState === 'Running' && st.Self?.Online === true;
       } catch { online = false; }
       evidence.push(`tailscale online: ${online}`);
-      if (!online) findings.push(finding('tailscale', 'crit', 'Tailscale 오프라인', '테일넷으로 하는 원격 접속이 끊깁니다.'));
+      if (!online) findings.push(finding('tailscale', 'crit', t('host.tailscale'), t('host.tailscaleDetail')));
     }
 
-    const metrics = { 디스크: `${df.usedPct}%`, '여유 메모리': `${freePct}%` };
-    if (services.length) metrics['서비스'] = `${running}/${services.length}`;
+    const metrics = { [t('metric.disk')]: `${df.usedPct}%`, [t('metric.freeMem')]: `${freePct}%` };
+    if (services.length) metrics[t('metric.services')] = `${running}/${services.length}`;
     return { findings, actions: actionsTaken.filter(a => a.done || a.reason === 'cooldown'), metrics, evidence: evidence.join('\n') };
   },
 };

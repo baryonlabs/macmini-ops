@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>운영 에이전트</title>
+<title>macmini-ops</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%9B%A0%3C/text%3E%3C/svg%3E" />
 <style>
   :root { --bg:#0b0d12; --panel:#151922; --panel-2:#1b2130; --line:#262d3d; --text:#e8ecf6; --muted:#8d97ab; --faint:#5f6a7d;
@@ -49,14 +49,14 @@
 </head>
 <body>
 <header>
-  <div><h1 id="title">🛠️ 운영 에이전트</h1><p class="sub">서버 · 앱 · 포탈 · 사이트를 상시 점검하고, 허용된 범위에서 자동 복구합니다.</p></div>
+  <div><h1 id="title">🛠️ macmini-ops</h1><p class="sub" id="subtitle"></p></div>
   <div class="meta" id="meta"></div>
 </header>
 <main>
   <div class="grid" id="agents"></div>
-  <h2>원인 분석 보고서 (LLM)</h2>
+  <h2 id="h-reports"></h2>
   <div id="reports" class="meta"></div>
-  <h2>최근 기록</h2>
+  <h2 id="h-events"></h2>
   <div class="tablewrap"><table id="events"></table></div>
 </main>
 <script>
@@ -71,60 +71,90 @@
     for (const c of kids.flat()) if (c != null && c !== false) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
     return n;
   };
-  const LABEL = { ok: '정상', warn: '경고', crit: '심각', pending: '대기' };
+  const I18N = {
+    en: {
+      subtitle: 'Always-on checks for servers, apps, portals and websites, with allow-listed self-healing.',
+      reports: 'Root-cause reports (LLM)', events: 'Recent events',
+      status: { ok: 'OK', warn: 'Warning', crit: 'Critical', pending: 'Pending' }, checking: 'Checking…',
+      never: 'not run yet', sec: n => `${n}s ago`, min: n => `${n} min ago`, hour: n => `${n} h ago`, every: sec => sec < 60 ? `every ${sec}s` : `every ${Math.round(sec / 60)} min`,
+      webhook: on => `Webhook: ${on ? 'on' : 'off'}`, llm: v => `LLM: ${v || 'off'}`, updated: 'Updated',
+      noIssues: '✓ No issues', runNow: 'Run now', lastReport: 'Latest report',
+      noReports: 'None yet — when a critical problem persists, the LLM writes a root-cause report.',
+      eventType: { open: 'Opened', resolved: 'Recovered', action: 'Auto-fix', diagnose: 'LLM' }, noEvents: 'No events',
+      tokenPrompt: 'Ops token (~/.macmini-ops/token on the server)', badToken: 'Wrong token.', loadFail: 'Failed to load',
+      dateLocale: 'en-US',
+    },
+    ko: {
+      subtitle: '서버 · 앱 · 포탈 · 사이트를 상시 점검하고, 허용된 범위에서 자동 복구합니다.',
+      reports: '원인 분석 보고서 (LLM)', events: '최근 기록',
+      status: { ok: '정상', warn: '경고', crit: '심각', pending: '대기' }, checking: '점검 중…',
+      never: '아직 실행 전', sec: n => `${n}초 전`, min: n => `${n}분 전`, hour: n => `${n}시간 전`, every: sec => sec < 60 ? `${sec}초마다` : `${Math.round(sec / 60)}분마다`,
+      webhook: on => `알림 웹훅: ${on ? '켜짐' : '꺼짐'}`, llm: v => `LLM 분석: ${v || '꺼짐'}`, updated: '갱신',
+      noIssues: '✓ 문제 없음', runNow: '지금 점검', lastReport: '최근 분석 보고서',
+      noReports: '아직 없음 — 심각한 문제가 이어지면 LLM이 원인을 분석합니다.',
+      eventType: { open: '발생', resolved: '복구', action: '자동 조치', diagnose: 'LLM 분석' }, noEvents: '기록 없음',
+      tokenPrompt: '운영 토큰 (서버의 ~/.macmini-ops/token)', badToken: '토큰이 맞지 않습니다.', loadFail: '불러오기 실패',
+      dateLocale: 'ko-KR',
+    },
+  };
+  let T = I18N.en;
   const ago = iso => {
-    if (!iso) return '아직 실행 전';
+    if (!iso) return T.never;
     const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
-    return s < 60 ? `${s}초 전` : s < 3600 ? `${Math.round(s / 60)}분 전` : `${Math.round(s / 3600)}시간 전`;
+    return s < 60 ? T.sec(s) : s < 3600 ? T.min(Math.round(s / 60)) : T.hour(Math.round(s / 3600));
   };
   const tokenKey = 'ops-token';
   const getToken = () => { try { return sessionStorage.getItem(tokenKey) || ''; } catch { return ''; } };
 
   async function runNow(id, btn) {
     let t = getToken();
-    if (!t) { t = prompt('운영 토큰 (서버의 ~/.macmini-ops/token)'); if (!t) return; try { sessionStorage.setItem(tokenKey, t.trim()); } catch {} }
-    btn.disabled = true; btn.textContent = '점검 중…';
+    if (!t) { t = prompt(T.tokenPrompt); if (!t) return; try { sessionStorage.setItem(tokenKey, t.trim()); } catch {} }
+    btn.disabled = true; btn.textContent = T.checking;
     try {
       const r = await fetch(`/api/agents/${id}/run`, { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` } });
-      if (r.status === 401) { try { sessionStorage.removeItem(tokenKey); } catch {} alert('토큰이 맞지 않습니다.'); }
+      if (r.status === 401) { try { sessionStorage.removeItem(tokenKey); } catch {} alert(T.badToken); }
     } finally { await load(); }
   }
 
   function render(data) {
+    T = I18N[data.locale] || I18N.en;
+    document.documentElement.lang = data.locale || 'en';
     $('#title').textContent = `🛠️ ${data.title}`;
     document.title = data.title;
+    $('#subtitle').textContent = T.subtitle;
+    $('#h-reports').textContent = T.reports;
+    $('#h-events').textContent = T.events;
     $('#meta').replaceChildren(
-      el('span', {}, `알림 웹훅: ${data.webhook ? '켜짐' : '꺼짐'}`),
-      el('span', {}, `LLM 분석: ${data.llm || '꺼짐'}`),
-      el('span', {}, `갱신 ${new Date().toLocaleTimeString('ko-KR', { hour12: false })}`));
+      el('span', {}, T.webhook(data.webhook)),
+      el('span', {}, T.llm(data.llm)),
+      el('span', {}, `${T.updated} ${new Date().toLocaleTimeString(T.dateLocale, { hour12: false })}`));
     $('#agents').replaceChildren(...data.agents.map(a => {
       const status = a.status || 'pending';
       const findings = a.findings || [];
       return el('section', { class: `agent ${status}`, id: a.id },
         el('div', { class: 'head' }, el('span', { class: 'icon' }, a.icon),
-          el('div', {}, el('div', { class: 'name' }, a.name), el('div', { class: 'when' }, `${ago(a.lastRun)} · ${Math.round(a.intervalSec / 60)}분마다`)),
-          el('span', { class: `pill ${status}` }, a.running ? '점검 중' : LABEL[status])),
+          el('div', {}, el('div', { class: 'name' }, a.name), el('div', { class: 'when' }, `${ago(a.lastRun)} · ${T.every(a.intervalSec)}`)),
+          el('span', { class: `pill ${status}` }, a.running ? T.checking : T.status[status])),
         el('div', { class: 'metrics' }, Object.entries(a.metrics || {}).map(([k, v]) => el('span', { class: 'metric' }, `${k} `, el('b', {}, v)))),
         findings.length
           ? el('ul', { class: 'findings' }, findings.map(f => el('li', { class: f.severity }, f.title, f.detail ? el('small', {}, f.detail) : null)))
-          : (a.lastRun ? el('div', { class: 'okmsg' }, '✓ 문제 없음') : null),
+          : (a.lastRun ? el('div', { class: 'okmsg' }, T.noIssues) : null),
         el('div', { class: 'row' },
-          el('button', { type: 'button', onclick: e => runNow(a.id, e.target) }, '지금 점검'),
-          a.lastReport ? el('a', { href: `/reports/${encodeURIComponent(a.lastReport)}`, target: '_blank' }, '최근 분석 보고서') : null));
+          el('button', { type: 'button', onclick: e => runNow(a.id, e.target) }, T.runNow),
+          a.lastReport ? el('a', { href: `/reports/${encodeURIComponent(a.lastReport)}`, target: '_blank' }, T.lastReport) : null));
     }));
-    $('#reports').replaceChildren(...(data.reports.length ? data.reports.map(r => el('a', { href: `/reports/${encodeURIComponent(r)}`, target: '_blank' }, r)) : [el('span', {}, '아직 없음 — 심각한 문제가 3회 이상 이어지면 LLM이 원인을 분석합니다.')]));
+    $('#reports').replaceChildren(...(data.reports.length ? data.reports.map(r => el('a', { href: `/reports/${encodeURIComponent(r)}`, target: '_blank' }, r)) : [el('span', {}, T.noReports)]));
     const name = Object.fromEntries(data.agents.map(a => [a.id, a.name]));
-    const TYPE = { open: '발생', resolved: '복구', action: '자동 조치', diagnose: 'LLM 분석' };
     $('#events').replaceChildren(...(data.events.length ? data.events.map(e => el('tr', {},
-      el('td', { class: 't' }, new Date(e.ts).toLocaleString('ko-KR', { hour12: false })),
+      el('td', { class: 't' }, new Date(e.ts).toLocaleString(T.dateLocale, { hour12: false })),
       el('td', { class: 'k' }, name[e.agent] || e.agent),
-      el('td', { class: 'k' }, TYPE[e.type] || e.type),
-      el('td', {}, e.title || e.id || e.status || '', e.detail ? ` — ${e.detail}` : '', e.reason ? ` (${e.reason})` : '', e.report ? ` → ${e.report}` : ''))) : [el('tr', {}, el('td', {}, '기록 없음'))]));
+      el('td', { class: 'k' }, T.eventType[e.type] || e.type),
+      el('td', {}, e.title || e.id || e.status || '', e.detail ? ` — ${e.detail}` : '', e.reason ? ` (${e.reason})` : '', e.report ? ` → ${e.report}` : ''))) : [el('tr', {}, el('td', {}, T.noEvents))]));
   }
 
   async function load() {
     try { render(await (await fetch('/api/agents', { cache: 'no-store' })).json()); }
-    catch { $('#meta').textContent = '불러오기 실패'; }
+    catch { $('#meta').textContent = T.loadFail; }
   }
   load(); setInterval(load, 15000);
 })();

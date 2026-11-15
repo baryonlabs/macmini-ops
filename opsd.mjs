@@ -27,7 +27,7 @@ const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 config.webhookUrl = process.env.OPS_WEBHOOK_URL || config.webhookUrl || '';
 const stateDir = process.env.OPS_STATE_DIR || path.join(os.homedir(), '.macmini-ops');
 const state = new StateStore(stateDir);
-const agents = createAgents(config);
+const agents = await createAgents(config, { baseDir: path.dirname(path.resolve(configPath)) });
 const engine = new Engine({ config, agents, state });
 
 const [cmd, arg] = process.argv.slice(2);
@@ -63,7 +63,8 @@ const httpServer = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/healthz') return send(res, 200, { ok: true });
     if (req.method === 'GET' && url.pathname === '/api/agents') {
       return send(res, 200, {
-        title: config.title || 'Mac mini 운영 에이전트',
+        title: config.title || 'macmini-ops',
+        locale: config.locale || 'en',
         agents: agents.map(a => ({ id: a.id, type: a.type, name: a.name, icon: a.icon, intervalSec: a.config.intervalSec || 600, running: engine.running.has(a.id), ...state.agent(a.id) })),
         events: state.recentEvents(60),
         reports: state.reports(20),

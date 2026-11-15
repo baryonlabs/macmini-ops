@@ -34,16 +34,24 @@ export async function builtinCheck(list) {
 }
 
 export default {
-  defaultName: '사이트 관리',
+  nameKey: 'sites.name',
   defaultIcon: '🌐',
-  playbook: [
-    '- critical 로 표시한 사이트가 응답하지 않으면 심각, 그 밖의 사이트는 경고.',
-    '- TLS 인증서가 tlsCritDays 안에 만료되면 심각, tlsWarnDays 안이면 경고. 갱신은 호스팅 쪽에서 한다.',
-    '- 이 에이전트는 사이트를 고치지 않고 보고만 한다.',
-  ].join('\n'),
+  playbook: {
+    en: [
+      '- A site marked critical that does not respond is critical; other sites are warnings.',
+      '- TLS certificates expiring within tlsCritDays are critical, within tlsWarnDays a warning. Renewal happens at the hosting provider.',
+      '- This agent reports only; it never changes a site.',
+    ].join('\n'),
+    ko: [
+      '- critical 로 표시한 사이트가 응답하지 않으면 심각, 그 밖의 사이트는 경고.',
+      '- TLS 인증서가 tlsCritDays 안에 만료되면 심각, tlsWarnDays 안이면 경고. 갱신은 호스팅 쪽에서 한다.',
+      '- 이 에이전트는 사이트를 고치지 않고 보고만 한다.',
+    ].join('\n'),
+  },
 
   async run(ctx) {
     const cfg = ctx.config;
+    const t = ctx.t;
     const warnDays = cfg.tlsWarnDays ?? 14;
     const critDays = cfg.tlsCritDays ?? 7;
     let report;
@@ -55,15 +63,16 @@ export default {
     const lines = [];
     for (const s of report.sites) {
       lines.push(`${s.id} status=${s.status} ok=${s.ok} tls=${s.tlsDays} err=${s.error || ''}`);
-      if (!s.ok) findings.push(finding(`down:${s.id}`, s.starred ? 'crit' : 'warn', `${s.name} 응답 없음`, `${s.url} · ${s.error || `HTTP ${s.status}`}`));
+      if (!s.ok) findings.push(finding(`down:${s.id}`, s.starred ? 'crit' : 'warn', t('sites.down', { name: s.name }), `${s.url} · ${s.error || `HTTP ${s.status}`}`));
       if (typeof s.tlsDays === 'number') {
-        if (s.tlsDays <= critDays) findings.push(finding(`tls:${s.id}`, 'crit', `${s.name} 인증서 ${s.tlsDays}일 남음`, s.url));
-        else if (s.tlsDays <= warnDays) findings.push(finding(`tls:${s.id}`, 'warn', `${s.name} 인증서 ${s.tlsDays}일 남음`, s.url));
+        const title = t('sites.tls', { name: s.name, days: s.tlsDays });
+        if (s.tlsDays <= critDays) findings.push(finding(`tls:${s.id}`, 'crit', title, s.url));
+        else if (s.tlsDays <= warnDays) findings.push(finding(`tls:${s.id}`, 'warn', title, s.url));
       }
     }
     return {
       findings,
-      metrics: { 사이트: report.sites.length, 정상: report.sites.filter(s => s.ok).length },
+      metrics: { [t('metric.sites')]: report.sites.length, [t('metric.up')]: report.sites.filter(s => s.ok).length },
       evidence: lines.join('\n'),
     };
   },
