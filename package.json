@@ -1,6 +1,6 @@
 {
   "name": "macmini-ops",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Always-on operations agents for a macOS server: health checks, allow-listed self-healing, and LLM root-cause reports.",
   "type": "module",
   "scripts": {
