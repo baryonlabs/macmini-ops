@@ -43,6 +43,8 @@ Every agent has `id` (unique), `type`, and optionally `name`, `icon`, `intervalS
 
 ### `host`
 
+The host card shows system uptime in hours and minutes and the 1-, 5-, and 15-minute load averages.
+
 | Key | Default | |
 |---|---|---|
 | `services` | `[]` | launchd labels expected to be running |

@@ -5,7 +5,8 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { Remediator, StateStore } from '../lib/core.mjs';
 import { Engine, statusOf } from '../lib/engine.mjs';
-import { parseLaunchctlPrint, parseDf } from '../agents/host.mjs';
+import { createT } from '../lib/i18n.mjs';
+import host, { parseLaunchctlPrint, parseDf } from '../agents/host.mjs';
 import { createAgents } from '../agents/index.mjs';
 import { builtinCheck, tlsDaysLeft } from '../agents/sites.mjs';
 
@@ -36,6 +37,22 @@ describe('parsers', () => {
     assert.equal(parseLaunchctlPrint('state = not running').state, 'not');
     const df = parseDf('Filesystem 1024-blocks Used Available Capacity\n/dev/disk3s5 239362496 180000000 40000000 82% /System/Volumes/Data');
     assert.equal(df.usedPct, 82);
+  });
+});
+
+describe('host metrics', () => {
+  it('shows uptime and load averages with localized labels', async ({ mock }) => {
+    mock.method(os, 'uptime', () => 27 * 3600 + 8 * 60 + 59);
+    mock.method(os, 'loadavg', () => [1.2, 0.625, 0]);
+    const config = { diskPath: '/' };
+
+    const english = await host.run({ config, t: createT('en') });
+    assert.equal(english.metrics.uptime, '27h 8m');
+    assert.equal(english.metrics['load (1/5/15 min)'], '1.20 / 0.63 / 0.00');
+
+    const korean = await host.run({ config, t: createT('ko') });
+    assert.equal(korean.metrics['가동 시간'], '27시간 8분');
+    assert.equal(korean.metrics['부하 (1/5/15분)'], '1.20 / 0.63 / 0.00');
   });
 });
 
