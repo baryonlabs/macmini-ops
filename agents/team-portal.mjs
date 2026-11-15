@@ -5,16 +5,24 @@
 import { finding, probe, actions, tailscale } from '../lib/core.mjs';
 
 export default {
-  defaultName: '포탈 관리',
+  nameKey: 'portal.name',
   defaultIcon: '🧭',
-  playbook: [
-    '- team-portal 이 응답하지 않으면 launchd 서비스를 재시작한다. fallbackProxy 뒤의 기존 사이트도 같은 방식으로 다룬다.',
-    '- 공개 주소(Tailscale serve 등)로 접속이 안 되면 serve 설정을 확인하고 허용된 경우 다시 연결한다.',
-    '- 카드 링크가 404이거나 응답이 없으면 경고로 보고만 한다. 로그인이 필요한 링크는 linkSkip 에 카드 id를 넣어 제외한다.',
-  ].join('\n'),
+  playbook: {
+    en: [
+      '- If team-portal does not respond, restart its launchd service. Treat the legacy site behind fallbackProxy the same way.',
+      '- If the public URL (e.g. Tailscale serve) is unreachable, check the serve mapping and re-apply it when allowed.',
+      '- Broken card links (404 / no response) are warnings only. Add login-only links to linkSkip.',
+    ].join('\n'),
+    ko: [
+      '- team-portal 이 응답하지 않으면 launchd 서비스를 재시작한다. fallbackProxy 뒤의 기존 사이트도 같은 방식으로 다룬다.',
+      '- 공개 주소(Tailscale serve 등)로 접속이 안 되면 serve 설정을 확인하고 허용된 경우 다시 연결한다.',
+      '- 카드 링크가 404이거나 응답이 없으면 경고로 보고만 한다. 로그인이 필요한 링크는 linkSkip 에 카드 id를 넣어 제외한다.',
+    ].join('\n'),
+  },
 
   async run(ctx) {
     const cfg = ctx.config;
+    const t = ctx.t;
     const findings = [];
     const actionsTaken = [];
     const evidence = [];
@@ -31,8 +39,8 @@ export default {
       return r;
     };
 
-    const health = await restartIfDown(`${cfg.portalUrl}/healthz`, cfg.label, 'portal:down', 'team-portal 응답 없음');
-    if (cfg.legacyUrl) await restartIfDown(cfg.legacyUrl, cfg.legacyLabel, 'legacy:down', 'fallback 사이트 응답 없음');
+    const health = await restartIfDown(`${cfg.portalUrl}/healthz`, cfg.label, 'portal:down', t('portal.down'));
+    if (cfg.legacyUrl) await restartIfDown(cfg.legacyUrl, cfg.legacyLabel, 'legacy:down', t('portal.legacyDown'));
 
     if (cfg.publicPortalUrl) {
       const reaches = r => r.ok && /"cards"/.test(r.text);
@@ -54,7 +62,7 @@ export default {
           await ctx.sleep(3000);
         }
         const again = await probe(`${cfg.publicPortalUrl}/healthz`);
-        if (!reaches(again)) findings.push(finding('public:down', 'crit', `${cfg.publicPortalUrl} 접속 안 됨`, `${proxyTarget ? `serve → ${proxyTarget} · ` : ''}${again.error || `HTTP ${again.status}`}`));
+        if (!reaches(again)) findings.push(finding('public:down', 'crit', t('portal.publicDown', { url: cfg.publicPortalUrl }), `${proxyTarget ? `serve → ${proxyTarget} · ` : ''}${again.error || `HTTP ${again.status}`}`));
       }
     }
 
@@ -75,7 +83,7 @@ export default {
     for (const [c, url, r] of results) {
       if (r.status === 404 || r.status === 0 || r.status >= 500) {
         dead += 1;
-        findings.push(finding(`link:${c.id}`, 'warn', `카드 링크 이상: ${c.title}`, `${url} · ${r.error || `HTTP ${r.status}`}`));
+        findings.push(finding(`link:${c.id}`, 'warn', t('portal.badLink', { title: c.title }), `${url} · ${r.error || `HTTP ${r.status}`}`));
       }
       evidence.push(`link ${c.id} ${url} -> ${r.status} ${r.error || ''}`);
     }
@@ -83,7 +91,7 @@ export default {
     return {
       findings,
       actions: actionsTaken.filter(a => a.done || a.reason === 'cooldown'),
-      metrics: { 카드: cards.length, '링크 점검': targets.length, '죽은 링크': dead },
+      metrics: { [t('metric.cards')]: cards.length, [t('metric.linksChecked')]: targets.length, [t('metric.deadLinks')]: dead },
       evidence: evidence.join('\n'),
     };
   },

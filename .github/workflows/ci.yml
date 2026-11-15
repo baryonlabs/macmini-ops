@@ -3,22 +3,30 @@ on:
   push:
     branches: [main]
   pull_request:
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: macos-latest
     strategy:
+      fail-fast: false
       matrix:
         node: [20, 22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
+      - name: demo boots and serves the dashboard
+        run: |
+          node examples/demo/run.mjs > demo.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8095/api/agents > /dev/null && exit 0; sleep 1; done
+          cat demo.log; exit 1
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
       # gitleaks CLI (MIT). The gitleaks-action needs a paid license for organization repos.

@@ -12,16 +12,24 @@
 import { finding, probe, run, actions } from '../lib/core.mjs';
 
 export default {
-  defaultName: 'LLM 앱',
+  nameKey: 'llm.name',
   defaultIcon: '🤖',
-  playbook: [
-    '- 구조: 웹/API 컨테이너(docker compose) → OpenAI 호환 모델 서버. 모델 서버는 SSH 터널 너머 GPU 서버에 있을 수 있다.',
-    '- 자동 복구: 터널 재시작(launchctl kickstart), 앱 컨테이너가 죽었으면 docker compose up -d.',
-    '- 원격 GPU 서버의 모델 프로세스는 자동으로 재시작하지 않는다. 사람이 판단할 수 있게 근거를 모아 보고한다.',
-  ].join('\n'),
+  playbook: {
+    en: [
+      '- Layout: web/API containers (docker compose) → OpenAI-compatible model server, possibly on a GPU host behind an SSH tunnel.',
+      '- Self-healing: restart the tunnel (launchctl kickstart); if app containers are down, docker compose up -d.',
+      '- The model process on a remote GPU host is never restarted automatically. Collect evidence so a human can decide.',
+    ].join('\n'),
+    ko: [
+      '- 구조: 웹/API 컨테이너(docker compose) → OpenAI 호환 모델 서버. 모델 서버는 SSH 터널 너머 GPU 서버에 있을 수 있다.',
+      '- 자동 복구: 터널 재시작(launchctl kickstart), 앱 컨테이너가 죽었으면 docker compose up -d.',
+      '- 원격 GPU 서버의 모델 프로세스는 자동으로 재시작하지 않는다. 사람이 판단할 수 있게 근거를 모아 보고한다.',
+    ].join('\n'),
+  },
 
   async run(ctx) {
     const cfg = ctx.config;
+    const t = ctx.t;
     const model = cfg.model || {};
     const app = cfg.app || {};
     const findings = [];
@@ -42,7 +50,7 @@ export default {
         m = await probe(model.url);
       }
       evidence.push(`model ${model.url}: ${m.status} ${m.error || ''} ${m.text.slice(0, 160)}`);
-      metrics['모델'] = m.ok ? `${m.ms}ms` : 'down';
+      metrics[t('metric.model')] = m.ok ? `${m.ms}ms` : 'down';
       if (!m.ok) {
         let remoteDown = false;
         if (model.remote?.ssh && model.remote?.command) {
@@ -52,8 +60,8 @@ export default {
         }
         if (model.tunnelLog) evidence.push(`--- tunnel log:\n${(await run('/usr/bin/tail', ['-n', '20', model.tunnelLog])).stdout}`);
         findings.push(finding('model:down', 'crit',
-          remoteDown ? '원격 모델 서버 프로세스가 꺼져 있음' : '모델 서버 연결 실패',
-          remoteDown ? '원격 GPU 서버에서 모델 서버를 다시 띄워야 합니다(자동 복구 안 함).' : `${model.url} · ${m.error || m.status}`));
+          remoteDown ? t('llm.remoteDown') : t('llm.modelDown'),
+          remoteDown ? t('llm.remoteDownDetail') : `${model.url} · ${m.error || m.status}`));
       }
     }
 
@@ -70,12 +78,12 @@ export default {
     }
     if (app.apiUrl) {
       evidence.push(`api ${app.apiUrl}: ${api.status} ${api.text.slice(0, 200)}`);
-      metrics.API = api.ok ? 'ok' : 'down';
-      if (!api.ok) findings.push(finding('api:down', 'crit', '앱 API 응답 없음', `${app.apiUrl} · ${api.error || api.status}`));
+      metrics[t('metric.api')] = api.ok ? 'ok' : 'down';
+      if (!api.ok) findings.push(finding('api:down', 'crit', t('llm.apiDown'), `${app.apiUrl} · ${api.error || api.status}`));
     }
     if (app.webUrl) {
       evidence.push(`web ${app.webUrl}: ${web.status}`);
-      if (!web.ok) findings.push(finding('web:down', 'crit', '앱 웹 화면 응답 없음', `${app.webUrl} · ${web.error || web.status}`));
+      if (!web.ok) findings.push(finding('web:down', 'crit', t('llm.webDown'), `${app.webUrl} · ${web.error || web.status}`));
     }
 
     // 3) end-to-end chat, every chatEverySec
@@ -84,16 +92,17 @@ export default {
       const url = new URL(app.chatPath || '/v1/chat/completions', app.apiUrl).toString();
       const chat = await probe(url, {
         method: 'POST', timeoutMs: 90000, headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: model.name, messages: [{ role: 'user', content: '상태 점검입니다. "정상"이라고만 답하세요.' }] }),
+        body: JSON.stringify({ model: model.name, messages: [{ role: 'user', content: t('llm.chatPrompt') }] }),
       });
       st.lastChatAt = Date.now();
       const answered = chat.ok && /"type":\s*"token"|"content"/.test(chat.text);
       st.lastChat = { ms: chat.ms, ok: answered };
       evidence.push(`chat: ${chat.status} ${chat.ms}ms answered=${answered}`);
-      if (!answered) findings.push(finding('chat:fail', 'crit', '채팅 응답 실패', `HTTP ${chat.status} ${chat.error || ''}`));
-      else if (chat.ms > (app.chatLatencyWarnMs || 20000)) findings.push(finding('chat:slow', 'warn', `채팅 응답 느림 ${chat.ms}ms`, `기준 ${app.chatLatencyWarnMs || 20000}ms`));
+      const limit = app.chatLatencyWarnMs || 20000;
+      if (!answered) findings.push(finding('chat:fail', 'crit', t('llm.chatFail'), `HTTP ${chat.status} ${chat.error || ''}`));
+      else if (chat.ms > limit) findings.push(finding('chat:slow', 'warn', t('llm.chatSlow', { ms: chat.ms }), t('llm.chatSlowDetail', { limit })));
     }
-    if (st.lastChat) metrics['채팅'] = st.lastChat.ok ? `${st.lastChat.ms}ms` : 'fail';
+    if (st.lastChat) metrics[t('metric.chat')] = st.lastChat.ok ? `${st.lastChat.ms}ms` : 'fail';
 
     return { findings, actions: actionsTaken.filter(a => a.done || a.reason === 'cooldown'), metrics, evidence: evidence.join('\n') };
   },

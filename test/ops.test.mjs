@@ -78,7 +78,7 @@ describe('Engine', () => {
     const st = await engine.runAgent('x');
     assert.equal(st.status, 'ok');
     assert.equal(alerts.length, 2);
-    assert.match(alerts[1], /복구됨/);
+    assert.match(alerts[1], /Recovered/);
   });
 
   it('does not alert for warnings', async () => {
@@ -166,25 +166,52 @@ describe('diagnose()', () => {
 });
 
 describe('createAgents()', () => {
-  it('builds instances from config and merges shared settings and playbooks', () => {
-    const agents = createAgents({
+  it('builds instances from config and merges shared settings and playbooks', async () => {
+    const agents = await createAgents({
       shared: { dockerBin: '/x/docker' },
       agents: [
-        { id: 'srv', type: 'host', services: ['a'], playbook: ['- 우리 회사 규칙'] },
+        { id: 'srv', type: 'host', services: ['a'], playbook: ['- our own rule'] },
         { id: 'off', type: 'sites', enabled: false },
       ],
     });
     assert.equal(agents.length, 1);
-    assert.equal(agents[0].name, '서버 관리');
+    assert.equal(agents[0].name, 'Server');
     assert.equal(agents[0].config.dockerBin, '/x/docker');
-    assert.match(agents[0].playbook, /launchctl kickstart[\s\S]*우리 회사 규칙/);
-    assert.throws(() => createAgents({ agents: [{ id: 'a', type: 'nope' }] }), /unknown type/);
-    assert.throws(() => createAgents({ agents: [{ id: 'a', type: 'host' }, { id: 'a', type: 'host' }] }), /duplicated/);
+    assert.match(agents[0].playbook, /launchctl kickstart[\s\S]*our own rule/);
+    await assert.rejects(createAgents({ agents: [{ id: 'a', type: 'nope' }] }), /unknown type/);
+    await assert.rejects(createAgents({ agents: [{ id: 'a', type: 'host' }, { id: 'a', type: 'host' }] }), /duplicated/);
   });
 
-  it('accepts the shipped example config', () => {
-    const example = JSON.parse(fs.readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'));
-    assert.equal(createAgents(example).length, 4);
+  it('localizes names and playbooks', async () => {
+    const [a] = await createAgents({ locale: 'ko', agents: [{ id: 's', type: 'sites' }] });
+    assert.equal(a.name, '사이트 관리');
+    assert.match(a.playbook, /보고만 한다/);
+  });
+
+  it('loads a custom agent type from a file path relative to the config', async () => {
+    const baseDir = path.dirname(new URL(import.meta.url).pathname);
+    const [a] = await createAgents({ agents: [{ id: 'e', type: './fixtures/echo-agent.mjs', fail: true }] }, { baseDir });
+    assert.equal(a.name, 'Echo');
+    const out = await a.run({ config: a.config });
+    assert.equal(out.findings[0].key, 'echo');
+    await assert.rejects(createAgents({ agents: [{ id: 'x', type: './fixtures/nope.mjs' }] }, { baseDir }));
+  });
+
+  it('accepts the shipped example and demo configs', async () => {
+    for (const f of ['../config.example.json', '../examples/demo/config.json']) {
+      const cfg = JSON.parse(fs.readFileSync(new URL(f, import.meta.url), 'utf8'));
+      assert.ok((await createAgents(cfg)).length >= 3, f);
+    }
+  });
+});
+
+describe('i18n', () => {
+  it('formats messages and falls back to English', async () => {
+    const { createT } = await import('../lib/i18n.mjs');
+    assert.equal(createT('en')('host.disk', { pct: 90 }), 'Disk 90% used');
+    assert.equal(createT('ko')('host.disk', { pct: 90 }), '디스크 90% 사용');
+    assert.match(createT('ko')('host.svcDetail', { state: 'x', lastExit: '1', note: '' }), /state=x/);
+    assert.equal(createT('fr')('metric.disk'), 'disk');
   });
 });
 
