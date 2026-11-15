@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes are documented here. From 0.2.0 on this file is maintained by
-[release-please](https://github.com/googleapis/release-please) from Conventional Commit titles.
+All notable changes are documented here. Each GitHub release also has notes generated from
+merged pull requests. See [MAINTAINING.md](MAINTAINING.md#releasing).
 
 ## 0.1.0 (2026-11-15)
 

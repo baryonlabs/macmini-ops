@@ -23,7 +23,7 @@ Node.js 20, 22 and 24 run in CI on macOS.
 
 - Keep PRs focused, one change per PR.
 - Add or update tests. A bug fix should come with a test that fails without it.
-- Use [Conventional Commits](https://www.conventionalcommits.org/) for the PR title (`feat:`, `fix:`, `docs:`, `chore:`). Releases and the changelog are generated from them.
+- Use [Conventional Commits](https://www.conventionalcommits.org/) for the PR title (`feat:`, `fix:`, `docs:`, `chore:`). Release notes are generated from merged PR titles.
 - Update docs (`README.md`, `docs/`) when behaviour or config changes.
 - CI must pass: tests, CodeQL and the gitleaks secret scan.
 

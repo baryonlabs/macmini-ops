@@ -1,0 +1,16 @@
+# Categories for auto-generated release notes (labels on merged PRs).
+changelog:
+  exclude:
+    labels: ['skip-changelog']
+    authors: ['dependabot']
+  categories:
+    - title: ✨ Features
+      labels: ['type: feature', 'type: agent']
+    - title: 🐛 Fixes
+      labels: ['type: bug']
+    - title: 🔒 Security
+      labels: ['security']
+    - title: 📚 Docs
+      labels: ['type: docs']
+    - title: 🧹 Other changes
+      labels: ['*']
