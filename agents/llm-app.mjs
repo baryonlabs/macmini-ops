@@ -7,6 +7,7 @@
 //   model.tunnelLabel    launchd label of the tunnel (optional, restarted if the model is unreachable)
 //   model.tunnelLog      file to include as evidence (optional)
 //   model.remote         { ssh, command, aliveRegex } read-only check on the GPU host (optional)
+//   model.gatewayHealthUrl  macmini-ops gateway /health: report which backend is serving (optional)
 //   app.apiUrl, app.webUrl, app.composeDir, app.composeProject
 //   app.chatPath (default /v1/chat/completions), app.chatEverySec, app.chatLatencyWarnMs
 import { finding, probe, run, actions } from '../lib/core.mjs';
@@ -62,6 +63,28 @@ export default {
         findings.push(finding('model:down', 'crit',
           remoteDown ? t('llm.remoteDown') : t('llm.modelDown'),
           remoteDown ? t('llm.remoteDownDetail') : `${model.url} · ${m.error || m.status}`));
+      }
+    }
+
+    // 1b) gateway: which backend serves this model right now
+    if (model.gatewayHealthUrl && model.name) {
+      const g = await probe(model.gatewayHealthUrl);
+      try {
+        const h = JSON.parse(g.text);
+        const order = h.models?.[model.name] || [];
+        const up = new Set(h.providers.filter(p => p.up).map(p => p.name));
+        const active = order.find(p => up.has(p));
+        const down = order.filter(p => !up.has(p));
+        metrics[t('metric.backend')] = active || 'none';
+        evidence.push(`gateway ${model.gatewayHealthUrl}: order=${order.join('>')} up=${[...up].join(',')}`);
+        if (!active && order.length) findings.push(finding('gateway:down', 'crit', t('llm.allDown'), order.join(' → ')));
+        else if (active && active !== order[0]) findings.push(finding('gateway:fallback', 'warn', t('llm.fallback', { primary: order[0], active }), t('llm.fallbackDetail', { down: down.join(', ') })));
+        // The primary often sits behind an SSH tunnel: restart it (allow-listed) so traffic can return.
+        if (order[0] && !up.has(order[0]) && model.tunnelLabel) {
+          actionsTaken.push(await ctx.remediate('kickstart', model.tunnelLabel, () => actions.kickstart(model.tunnelLabel)));
+        }
+      } catch {
+        findings.push(finding('gateway:down', 'crit', t('llm.allDown'), `${model.gatewayHealthUrl} · ${g.error || g.status}`));
       }
     }
 

@@ -30,6 +30,7 @@ macmini-ops is one small Node.js daemon that:
 - **Explains** persistent critical incidents. An LLM reads the collected evidence and writes a root-cause report. It runs **read-only**: it never executes anything.
 - **Prefers your own model**: any OpenAI-compatible server (vLLM, Ollama, LM Studio) first, then falls back to the next backend, such as Codex CLI.
 - **Has zero dependencies**: Node.js ≥ 20, no `npm install`, no build step.
+- **Includes an LLM gateway** ([docs](docs/llm-gateway.md)): one OpenAI-compatible URL with ordered fallback, for example on-prem GPU → second GPU → OpenRouter → Ollama Cloud. It has per-backend cooldown and streaming passthrough.
 
 ## Try the demo in one minute
 
