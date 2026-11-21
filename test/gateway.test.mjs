@@ -178,3 +178,18 @@ describe('gateway log hygiene', () => {
     assert.equal(clean('m\n[gateway] forged line\r'), 'm [gateway] forged line ');
   });
 });
+
+describe('gateway /health for dashboards', () => {
+  it('reports key presence as booleans and the per-model routes, never key values', async () => {
+    const { base } = await gateway({
+      providers: { a: { baseUrl: 'http://127.0.0.1:9/v1' }, k: { baseUrl: 'http://127.0.0.1:9/v1', apiKeyEnv: 'K' } },
+      models: { m: [{ provider: 'a', model: 'ma' }, { provider: 'k', model: 'mk' }] },
+    }, { env: { K: 'sk-secret-value' } });
+    const raw = await (await fetch(`${base}/health`)).text();
+    assert.doesNotMatch(raw, /sk-secret-value/);
+    const h = JSON.parse(raw);
+    const k = h.providers.find(p => p.name === 'k');
+    assert.deepEqual([k.keyRequired, k.keySet], [true, true]);
+    assert.deepEqual(h.routes.m, [{ provider: 'a', model: 'ma' }, { provider: 'k', model: 'mk' }]);
+  });
+});

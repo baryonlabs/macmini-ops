@@ -59,6 +59,10 @@ Give an `llm-app` agent `"model": { "gatewayHealthUrl": "http://127.0.0.1:8030/h
 - When every route is down, it raises a **critical** alert.
 - If `tunnelLabel` is set, it also restarts the SSH tunnel to the primary, if that tunnel is on the allow-list.
 
+## Dashboard
+
+If the macmini-ops config has a `gateway` block, the dashboard shows an **LLM gateway** section. It lists the connection URLs (local, and Docker via `host.docker.internal`) with copy buttons, the fallback order per model with each backend's live state (up, cooling down, or API key missing), served counts and last error, and a ready-to-paste `curl` / OpenAI SDK example. API key values are never shown, only whether one is set. `GET /api/gateway` returns the same data as JSON.
+
 ## Running
 
 ```bash
