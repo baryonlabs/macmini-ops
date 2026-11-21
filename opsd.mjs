@@ -72,6 +72,37 @@ const httpServer = http.createServer(async (req, res) => {
         llm: config.llm?.enabled ? (config.llm.backends || []).map(b => b.name || b.type).join(' → ') : null,
       });
     }
+    // Connection info + live state of the LLM gateway (when this config has a "gateway" block).
+    if (req.method === 'GET' && url.pathname === '/api/gateway') {
+      const g = config.gateway;
+      if (!g) return send(res, 200, { enabled: false });
+      const host = g.host || '127.0.0.1';
+      const port = g.port || 8030;
+      const loopback = ['127.0.0.1', 'localhost', '::1'].includes(host);
+      const local = `http://${loopback ? '127.0.0.1' : host}:${port}`;
+      let health = null;
+      let error = '';
+      try {
+        const r = await fetch(`${local}/health`, { signal: AbortSignal.timeout(3000) });
+        health = await r.json();
+      } catch (e) {
+        error = e.name === 'TimeoutError' ? 'timeout' : (e.cause?.code || e.message);
+      }
+      return send(res, 200, {
+        enabled: true,
+        reachable: Boolean(health),
+        error,
+        exposedOnNetwork: !loopback,
+        endpoints: [
+          { label: 'local', url: `${local}/v1` },
+          ...(loopback ? [{ label: 'docker', url: `http://host.docker.internal:${port}/v1` }] : []),
+          ...(g.publicBaseUrl ? [{ label: 'public', url: g.publicBaseUrl }] : []),
+        ],
+        models: Object.fromEntries(Object.entries(g.models).map(([m, rs]) => [m, rs.map(r => ({ provider: r.provider, model: r.model }))])),
+        providers: health?.providers || Object.keys(g.providers).map(name => ({ name, up: null, keyRequired: Boolean(g.providers[name].apiKeyEnv) })),
+        stats: health?.stats || null,
+      });
+    }
     // /agents/<id>/health — 503 only for critical problems, so the portal dot turns red.
     if (req.method === 'GET' && parts[0] === 'agents' && parts[2] === 'health') {
       const st = state.data.agents[parts[1]];

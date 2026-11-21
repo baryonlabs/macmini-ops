@@ -11,6 +11,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createGateway } from '../../lib/gateway.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const started = Date.now();
@@ -44,6 +45,7 @@ const mock = http.createServer((req, res) => {
   if (req.url === '/health') return json(200, { status: 'ok' });
   if (req.url === '/' ) { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<h1>demo app</h1>'); }
   if (req.url === '/v1/chat/completions' && req.method === 'POST') {
+    if (modelDown()) return json(503, { error: 'model unavailable' });
     let body = '';
     req.on('data', c => { body += c; });
     req.on('end', () => {
@@ -63,16 +65,32 @@ mock.on('error', error => {
   process.exit(1);
 });
 
+// A backup model server that never fails, so the gateway has somewhere to fall back to.
+const backup = http.createServer((req, res) => {
+  let body = '';
+  req.on('data', c => { body += c; });
+  req.on('end', () => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const prompt = body ? (JSON.parse(body).messages?.[0]?.content || '') : '';
+    res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: /evidence|증거/.test(prompt) ? demoDiagnosis(prompt) : 'OK (backup)' } }] }));
+  });
+});
+backup.listen(18801, '127.0.0.1');
+const demoConfig = JSON.parse(fs.readFileSync(path.join(HERE, 'config.json'), 'utf8'));
+const { server: gateway } = createGateway(demoConfig.gateway, { log: { info() {}, error() {} } });
+gateway.listen(demoConfig.gateway.port, '127.0.0.1');
+
 mock.listen(18800, '127.0.0.1', () => {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'macmini-ops-demo-'));
   console.log('mock services  http://127.0.0.1:18800  (model goes down at +25s, back at +95s)');
+  console.log('llm gateway    http://127.0.0.1:18030/v1  (primary → backup)');
   console.log('dashboard      http://127.0.0.1:8095');
   console.log(`state          ${stateDir}\n`);
   const child = spawn(process.execPath, [path.join(HERE, '../../opsd.mjs')], {
     stdio: 'inherit',
     env: { ...process.env, OPS_CONFIG: path.join(HERE, 'config.json'), OPS_STATE_DIR: stateDir, OPS_WEBHOOK_URL: '' },
   });
-  const stop = () => { child.kill('SIGTERM'); mock.close(); process.exit(0); };
+  const stop = () => { child.kill('SIGTERM'); mock.close(); backup.close(); gateway.close(); process.exit(0); };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
   child.on('exit', code => { mock.close(); process.exit(code ?? 0); });
