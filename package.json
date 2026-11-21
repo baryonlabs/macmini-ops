@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node opsd.mjs",
     "demo": "node examples/demo/run.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "gateway": "node gateway.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -43,6 +44,7 @@
     "config.example.json",
     "README.md",
     "README.ko.md",
-    "LICENSE"
+    "LICENSE",
+    "gateway.mjs"
   ]
 }

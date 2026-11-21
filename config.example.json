@@ -8,17 +8,35 @@
     "escalateAfter": 3,
     "cooldownHours": 6,
     "backends": [
-      { "name": "local vLLM", "type": "openai", "baseUrl": "http://127.0.0.1:8000/v1", "model": "my-model", "disableThinking": true },
-      { "name": "Codex", "type": "codex", "cli": "/opt/homebrew/bin/codex" }
+      {
+        "name": "gateway",
+        "type": "openai",
+        "baseUrl": "http://127.0.0.1:8030/v1",
+        "model": "my-model",
+        "disableThinking": true
+      },
+      {
+        "name": "Codex",
+        "type": "codex",
+        "cli": "/opt/homebrew/bin/codex"
+      }
     ]
   },
   "remediation": {
     "dryRun": true,
     "cooldownSec": 600,
     "allow": {
-      "kickstart": ["com.example.my-web", "com.example.model-tunnel", "io.github.team-portal"],
-      "compose": ["my-llm-app"],
-      "serve": ["80"]
+      "kickstart": [
+        "com.example.my-web",
+        "com.example.model-tunnel",
+        "io.github.team-portal"
+      ],
+      "compose": [
+        "my-llm-app"
+      ],
+      "serve": [
+        "80"
+      ]
     }
   },
   "shared": {
@@ -30,7 +48,11 @@
       "id": "server",
       "type": "host",
       "intervalSec": 300,
-      "services": ["com.example.my-web", "com.example.model-tunnel", "io.github.team-portal"],
+      "services": [
+        "com.example.my-web",
+        "com.example.model-tunnel",
+        "io.github.team-portal"
+      ],
       "diskWarnPct": 85,
       "diskCritPct": 92,
       "tailscale": true
@@ -44,7 +66,12 @@
         "url": "http://127.0.0.1:8020/v1/models",
         "name": "my-model",
         "tunnelLabel": "com.example.model-tunnel",
-        "remote": { "ssh": "gpu-host", "command": "pgrep -af 'vllm serve' | cut -c1-200; nvidia-smi --query-gpu=index,memory.used --format=csv,noheader", "aliveRegex": "my-model" }
+        "remote": {
+          "ssh": "gpu-host",
+          "command": "pgrep -af 'vllm serve' | cut -c1-200; nvidia-smi --query-gpu=index,memory.used --format=csv,noheader",
+          "aliveRegex": "my-model"
+        },
+        "gatewayHealthUrl": "http://127.0.0.1:8030/health"
       },
       "app": {
         "apiUrl": "http://127.0.0.1:8000/health",
@@ -53,7 +80,9 @@
         "composeProject": "my-llm-app",
         "chatEverySec": 1800
       },
-      "playbook": ["- (예시) 모델 서버는 gpu-host 에서 tmux 세션 vllm 으로 돌고 있다."]
+      "playbook": [
+        "- (예시) 모델 서버는 gpu-host 에서 tmux 세션 vllm 으로 돌고 있다."
+      ]
     },
     {
       "id": "portal",
@@ -70,9 +99,72 @@
       "type": "sites",
       "intervalSec": 1800,
       "sites": [
-        { "id": "home", "name": "회사 홈페이지", "url": "https://www.example.com", "critical": true },
-        { "id": "blog", "name": "블로그", "url": "https://blog.example.com" }
+        {
+          "id": "home",
+          "name": "회사 홈페이지",
+          "url": "https://www.example.com",
+          "critical": true
+        },
+        {
+          "id": "blog",
+          "name": "블로그",
+          "url": "https://blog.example.com"
+        }
       ]
     }
-  ]
+  ],
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 8030,
+    "cooldownSec": 60,
+    "firstByteMs": 30000,
+    "providers": {
+      "gpu-a": {
+        "baseUrl": "http://127.0.0.1:8020/v1"
+      },
+      "gpu-b": {
+        "baseUrl": "http://gpu-b.local:11434/v1",
+        "firstByteMs": 20000
+      },
+      "openrouter": {
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "apiKeyEnv": "OPENROUTER_API_KEY",
+        "dropFields": [
+          "chat_template_kwargs"
+        ],
+        "extraBody": {
+          "reasoning": {
+            "enabled": false
+          }
+        }
+      },
+      "ollama-cloud": {
+        "baseUrl": "https://ollama.com/v1",
+        "apiKeyEnv": "OLLAMA_API_KEY",
+        "dropFields": [
+          "chat_template_kwargs"
+        ]
+      }
+    },
+    "models": {
+      "my-model": [
+        {
+          "provider": "gpu-a",
+          "model": "my-model"
+        },
+        {
+          "provider": "gpu-b",
+          "model": "qwen3.5-27b-local"
+        },
+        {
+          "provider": "openrouter",
+          "model": "qwen/qwen3.5-27b"
+        },
+        {
+          "provider": "ollama-cloud",
+          "model": "qwen3.5"
+        }
+      ]
+    }
+  }
 }
