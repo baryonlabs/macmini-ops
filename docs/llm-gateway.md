@@ -16,7 +16,7 @@ app ─▶ gateway (127.0.0.1:8030/v1) ─▶ 1. on-prem GPU (vLLM via SSH tunne
   - no response byte arrives within `firstByteMs`
   - the backend returns 404, 408, 409, 425, 429 or 5xx
   - the backend returns any other 4xx, without marking it unhealthy
-- **Cooldown**: a failed backend is skipped for `cooldownSec`, then tried again. Requests don't wait for a dead backend each time.
+- **Cooldown**: a failed backend is skipped for `cooldownSec`, then tried again. Requests don't wait for a dead backend each time. A provider can set its own `cooldownSec`, for example a shared GPU that is often busy for hours.
 - **Streaming** passes through unbuffered. Fallback is only possible before the first byte reaches the client.
 - Every response has `x-gateway-backend` and `x-gateway-model` headers. `GET /health` shows each provider's up/down state, counters and last error, plus the route order per model.
 - **API keys** come from environment variables named by `apiKeyEnv`. A provider whose key is missing is skipped. Keep keys in an env file (mode 600) and start the gateway with `node --env-file=<file> gateway.mjs`.

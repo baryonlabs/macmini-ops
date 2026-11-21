@@ -82,6 +82,18 @@ describe('llm gateway', () => {
     assert.equal(seenBusy.length, 2, 'retried after cooldown');
   });
 
+  it('honours a per-provider cooldown', async () => {
+    let t = 0;
+    const seen = [];
+    const busy = await upstream('503', seen);
+    const ok = await upstream('ok');
+    const { base } = await gateway({ cooldownSec: 60, providers: { busy: { baseUrl: busy, cooldownSec: 600 }, ok: { baseUrl: ok } }, models: { m: [{ provider: 'busy', model: 'x' }, { provider: 'ok', model: 'y' }] } }, { now: () => t });
+    await chat(base, { model: 'm', messages: [] });
+    t = 120000;
+    await chat(base, { model: 'm', messages: [] });
+    assert.equal(seen.length, 1, 'still cooling down after 2 minutes');
+  });
+
   it('streams through without buffering', async () => {
     const s = await upstream('stream');
     const { base } = await gateway({ providers: { s: { baseUrl: s } }, models: { m: [{ provider: 's', model: 'x' }] } });
