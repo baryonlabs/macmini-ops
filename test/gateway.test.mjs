@@ -125,7 +125,8 @@ describe('llm gateway', () => {
     const res = await chat(base, { model: 'm', messages: [] });
     assert.equal(res.status, 502);
     const j = await res.json();
-    assert.match(j.error.attempts[0], /missing NOPE/);
+    assert.match(j.error.attempts[0], /API key not set/);
+    assert.doesNotMatch(JSON.stringify(j), /NOPE/);
     assert.equal(j.error.attempts.length, 2);
   });
 
@@ -168,5 +169,12 @@ describe('llm-app agent with gateway health', () => {
     out = await llmApp.run(ctx());
     assert.equal(out.findings.length, 0);
     assert.equal(out.metrics.backend, 'gpu-a');
+  });
+});
+
+describe('gateway log hygiene', () => {
+  it('strips control characters from logged values', async () => {
+    const { clean } = await import('../lib/gateway.mjs');
+    assert.equal(clean('m\n[gateway] forged line\r'), 'm [gateway] forged line ');
   });
 });

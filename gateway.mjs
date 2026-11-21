@@ -19,7 +19,7 @@ if (!g) {
   process.exit(1);
 }
 for (const [name, p] of Object.entries(g.providers)) {
-  if (p.apiKeyEnv && !process.env[p.apiKeyEnv]) console.warn(`[gateway] provider ${name}: ${p.apiKeyEnv} is not set; it will be skipped`);
+  if (p.apiKeyEnv && !process.env[p.apiKeyEnv]) console.warn(`[gateway] provider ${name}: API key not set (see apiKeyEnv in config); it will be skipped`);
 }
 const { server } = createGateway(g);
 const host = g.host || '127.0.0.1';
