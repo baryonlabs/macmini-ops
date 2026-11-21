@@ -234,3 +234,22 @@ describe('sites built-in checker', () => {
     }
   });
 });
+
+describe('host agent: mounts and links', () => {
+  it('flags a missing mount and a broken symlink', async () => {
+    const { default: host } = await import('../agents/host.mjs');
+    const { createT } = await import('../lib/i18n.mjs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'links-'));
+    fs.mkdirSync(path.join(dir, 'target'));
+    fs.symlinkSync(path.join(dir, 'target'), path.join(dir, 'good'));
+    fs.symlinkSync(path.join(dir, 'gone'), path.join(dir, 'bad'));
+    const out = await host.run({
+      config: { services: [], mounts: ['/Volumes/definitely-not-mounted-xyz'], links: [path.join(dir, 'good'), path.join(dir, 'bad')] },
+      t: createT('en'), remediate: async () => ({ done: false }), sleep: async () => {},
+    });
+    const keys = out.findings.map(f => f.key);
+    assert.ok(keys.includes('mount:/Volumes/definitely-not-mounted-xyz'));
+    assert.ok(keys.includes(`link:${path.join(dir, 'bad')}`));
+    assert.ok(!keys.includes(`link:${path.join(dir, 'good')}`));
+  });
+});

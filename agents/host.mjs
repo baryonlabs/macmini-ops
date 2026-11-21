@@ -1,4 +1,5 @@
 // host: launchd services, disk, memory, Docker Desktop and Tailscale on a macOS server.
+import fs from 'node:fs';
 import { finding, run, actions, uid, tailscale } from '../lib/core.mjs';
 
 export function parseLaunchctlPrint(text) {
@@ -84,6 +85,24 @@ export default {
       } catch { online = false; }
       evidence.push(`tailscale online: ${online}`);
       if (!online) findings.push(finding('tailscale', 'crit', t('host.tailscale'), t('host.tailscaleDetail')));
+    }
+
+    // External volumes that must stay mounted, and symlinks that point onto them.
+    for (const mount of cfg.mounts || []) {
+      const out = (await run('/sbin/mount', [])).stdout;
+      const mounted = out.split('\n').some(l => l.includes(` on ${mount} (`));
+      evidence.push(`mount ${mount}: ${mounted ? 'ok' : 'MISSING'}`);
+      if (!mounted) findings.push(finding(`mount:${mount}`, 'crit', t('host.mountMissing', { mount }), t('host.mountMissingDetail')));
+    }
+    for (const link of cfg.links || []) {
+      let target = '';
+      let ok = false;
+      try {
+        target = fs.readlinkSync(link);
+        ok = fs.existsSync(link);
+      } catch { /* not a symlink or missing */ }
+      evidence.push(`link ${link} -> ${target || '(not a symlink)'}: ${ok ? 'ok' : 'BROKEN'}`);
+      if (!ok) findings.push(finding(`link:${link}`, 'crit', t('host.linkBroken', { link }), target ? `→ ${target}` : t('host.notSymlink')));
     }
 
     const metrics = { [t('metric.disk')]: `${df.usedPct}%`, [t('metric.freeMem')]: `${freePct}%` };
