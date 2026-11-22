@@ -44,6 +44,16 @@
   table { width:100%; border-collapse:collapse; font-size:12px; } td { padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
   td.t { color:var(--faint); white-space:nowrap; width:1%; } td.k { white-space:nowrap; width:1%; }
   .tablewrap { border:1px solid var(--line); border-radius:12px; overflow:auto; background:var(--panel); }
+  .gw-card { border:1px solid var(--line); border-radius:16px; padding:16px; background:linear-gradient(160deg,var(--panel-2),var(--panel)); display:flex; flex-direction:column; gap:12px; }
+  .gw-endpoints { display:flex; flex-wrap:wrap; gap:8px; }
+  .gw-ep { display:inline-flex; align-items:center; gap:8px; font-size:12.5px; border:1px solid var(--line); border-radius:10px; padding:6px 10px; background:var(--bg); }
+  .gw-ep b { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+  .gw-ep code { font-size:12.5px; }
+  .gw-ep button { padding:2px 8px; font-size:11px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; background:var(--faint); }
+  .dot.ok { background:var(--ok); } .dot.crit { background:var(--crit); } .dot.warn { background:var(--warn); }
+  .gw-note { margin:0; font-size:12px; color:var(--muted); }
+  .gw-example { margin:0; font-size:11.5px; overflow-x:auto; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); }
   @media (max-width:640px) { header, main { padding:16px; } }
 </style>
 </head>
@@ -54,6 +64,15 @@
 </header>
 <main>
   <div class="grid" id="agents"></div>
+  <section id="gateway" hidden>
+    <h2 id="h-gateway"></h2>
+    <div class="gw-card">
+      <div class="gw-endpoints" id="gw-endpoints"></div>
+      <div class="tablewrap"><table id="gw-routes"></table></div>
+      <p class="gw-note" id="gw-note"></p>
+      <pre class="gw-example" id="gw-example"></pre>
+    </div>
+  </section>
   <h2 id="h-reports"></h2>
   <div id="reports" class="meta"></div>
   <h2 id="h-events"></h2>
@@ -83,6 +102,12 @@
       eventType: { open: 'Opened', resolved: 'Recovered', action: 'Auto-fix', diagnose: 'LLM' }, noEvents: 'No events',
       tokenPrompt: 'Ops token (~/.macmini-ops/token on the server)', badToken: 'Wrong token.', loadFail: 'Failed to load',
       dateLocale: 'en-US',
+      gateway: 'LLM gateway', gwOrder: '#', gwProvider: 'Backend', gwModel: 'Upstream model', gwState: 'State', gwServed: 'Served', gwLastError: 'Last error',
+      gwUp: 'up', gwDown: 'cooling down', gwNoKey: 'no API key', gwUnknown: 'unknown', copy: 'Copy', copied: 'Copied',
+      gwUnreachable: e => `Gateway not reachable (${e}).`,
+      gwLocalOnly: 'Listens on this machine only (and Docker containers via host.docker.internal). It has no client authentication, so it is not exposed to the network.',
+      gwExposed: 'Exposed on the network — make sure only trusted clients can reach it.',
+      gwStats: s => `requests ${s.requests} · fallbacks ${s.fallbacks} · failed ${s.failed}`,
     },
     ko: {
       subtitle: '서버 · 앱 · 포탈 · 사이트를 상시 점검하고, 허용된 범위에서 자동 복구합니다.',
@@ -95,6 +120,12 @@
       eventType: { open: '발생', resolved: '복구', action: '자동 조치', diagnose: 'LLM 분석' }, noEvents: '기록 없음',
       tokenPrompt: '운영 토큰 (서버의 ~/.macmini-ops/token)', badToken: '토큰이 맞지 않습니다.', loadFail: '불러오기 실패',
       dateLocale: 'ko-KR',
+      gateway: 'LLM 게이트웨이 접속 정보', gwOrder: '순서', gwProvider: '백엔드', gwModel: '실제 모델', gwState: '상태', gwServed: '처리', gwLastError: '마지막 오류',
+      gwUp: '정상', gwDown: '대기(쿨다운)', gwNoKey: 'API 키 없음', gwUnknown: '알 수 없음', copy: '복사', copied: '복사됨',
+      gwUnreachable: e => `게이트웨이에 연결할 수 없습니다 (${e}).`,
+      gwLocalOnly: '이 맥미니 안에서만 접속됩니다(Docker 컨테이너는 host.docker.internal). 클라이언트 인증이 없어 네트워크에는 열지 않았습니다.',
+      gwExposed: '네트워크에 열려 있습니다 — 신뢰하는 곳에서만 접근하도록 하세요.',
+      gwStats: s => `요청 ${s.requests} · 폴백 ${s.fallbacks} · 실패 ${s.failed}`,
     },
   };
   let T = I18N.en;
@@ -152,8 +183,47 @@
       el('td', {}, e.title || e.id || e.status || '', e.detail ? ` — ${e.detail}` : '', e.reason ? ` (${e.reason})` : '', e.report ? ` → ${e.report}` : ''))) : [el('tr', {}, el('td', {}, T.noEvents))]));
   }
 
+  function copyBtn(text) {
+    return el('button', { type: 'button', onclick: async e => {
+      try { await navigator.clipboard.writeText(text); e.target.textContent = T.copied; setTimeout(() => { e.target.textContent = T.copy; }, 1500); } catch {}
+    } }, T.copy);
+  }
+
+  function renderGateway(g) {
+    const box = $('#gateway');
+    if (!g || !g.enabled) { box.hidden = true; return; }
+    box.hidden = false;
+    $('#h-gateway').textContent = T.gateway;
+    $('#gw-endpoints').replaceChildren(...g.endpoints.map(ep => el('span', { class: 'gw-ep' }, el('b', {}, ep.label), el('code', {}, ep.url), copyBtn(ep.url))));
+    const byName = Object.fromEntries((g.providers || []).map(p => [p.name, p]));
+    const rows = [el('tr', {}, ...[T.gwOrder, T.gwProvider, T.gwModel, T.gwState, T.gwServed, T.gwLastError].map(h => el('td', { class: 'k' }, el('b', {}, h))))];
+    for (const [model, routes] of Object.entries(g.models)) {
+      rows.push(el('tr', {}, el('td', { colspan: '6' }, el('b', {}, 'model: '), el('code', {}, model))));
+      routes.forEach((r, i) => {
+        const p = byName[r.provider] || {};
+        const state = p.keyRequired && p.keySet === false ? ['warn', T.gwNoKey] : p.up === true ? ['ok', T.gwUp] : p.up === false ? ['crit', T.gwDown] : ['', T.gwUnknown];
+        rows.push(el('tr', {},
+          el('td', { class: 't' }, String(i + 1)),
+          el('td', { class: 'k' }, r.provider),
+          el('td', {}, el('code', {}, r.model)),
+          el('td', { class: 'k' }, el('span', { class: `dot ${state[0]}` }), state[1]),
+          el('td', { class: 't' }, String(p.ok ?? '–')),
+          el('td', {}, p.lastError || '')));
+      });
+    }
+    $('#gw-routes').replaceChildren(...rows);
+    const notes = [g.reachable ? '' : T.gwUnreachable(g.error), g.exposedOnNetwork ? T.gwExposed : T.gwLocalOnly, g.stats ? T.gwStats(g.stats) : ''].filter(Boolean);
+    $('#gw-note').textContent = notes.join(' ');
+    const first = g.endpoints[0]?.url || '';
+    const model = Object.keys(g.models)[0] || 'MODEL';
+    $('#gw-example').textContent = `curl ${first}/chat/completions \\\n  -H 'Content-Type: application/json' \\\n  -d '{"model":"${model}","messages":[{"role":"user","content":"hello"}]}'\n\n# OpenAI SDK: base_url="${first}", api_key="unused", model="${model}"`;
+  }
+
   async function load() {
-    try { render(await (await fetch('/api/agents', { cache: 'no-store' })).json()); }
+    try {
+      render(await (await fetch('/api/agents', { cache: 'no-store' })).json());
+      renderGateway(await (await fetch('/api/gateway', { cache: 'no-store' })).json());
+    }
     catch { $('#meta').textContent = T.loadFail; }
   }
   load(); setInterval(load, 15000);

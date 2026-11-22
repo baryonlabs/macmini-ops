@@ -10,9 +10,9 @@
     "cooldownHours": 1,
     "backends": [
       {
-        "name": "demo model",
+        "name": "gateway",
         "type": "openai",
-        "baseUrl": "http://127.0.0.1:18800/v1",
+        "baseUrl": "http://127.0.0.1:18030/v1",
         "model": "demo-model"
       }
     ]
@@ -38,13 +38,15 @@
       "name": "Demo AI chat",
       "intervalSec": 10,
       "model": {
-        "url": "http://127.0.0.1:18800/v1/models",
-        "name": "demo-model"
+        "url": "http://127.0.0.1:18030/v1/models",
+        "name": "demo-model",
+        "gatewayHealthUrl": "http://127.0.0.1:18030/health"
       },
       "app": {
         "apiUrl": "http://127.0.0.1:18800/health",
         "webUrl": "http://127.0.0.1:18800/",
-        "chatEverySec": 30
+        "chatEverySec": 30,
+        "chatPath": "http://127.0.0.1:18030/v1/chat/completions"
       },
       "playbook": [
         "- Demo: the model server is a mock that fails on purpose for 70 seconds."
@@ -68,5 +70,31 @@
         }
       ]
     }
-  ]
+  ],
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 18030,
+    "cooldownSec": 30,
+    "firstByteMs": 5000,
+    "providers": {
+      "primary": {
+        "baseUrl": "http://127.0.0.1:18800/v1"
+      },
+      "backup": {
+        "baseUrl": "http://127.0.0.1:18801/v1"
+      }
+    },
+    "models": {
+      "demo-model": [
+        {
+          "provider": "primary",
+          "model": "demo-model"
+        },
+        {
+          "provider": "backup",
+          "model": "backup-model"
+        }
+      ]
+    }
+  }
 }

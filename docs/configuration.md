@@ -53,6 +53,8 @@ The host card shows system uptime in hours and minutes and the 1-, 5-, and 15-mi
 | `memWarnFreePct` | 10 | |
 | `dockerBin`, `dockerContext` | | Set `dockerBin` to check Docker |
 | `tailscale` | `false` | Check that Tailscale is online |
+| `mounts` | `[]` | Volumes that must be mounted, e.g. an external disk used as extra internal storage |
+| `links` | `[]` | Symlinks that must resolve, e.g. app or SDK folders moved to that external disk |
 
 ### `llm-app`
 
