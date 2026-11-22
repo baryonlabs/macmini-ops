@@ -1,5 +1,6 @@
 // host: launchd services, disk, memory, Docker Desktop and Tailscale on a macOS server.
 import fs from 'node:fs';
+import os from 'node:os';
 import { finding, run, actions, uid, tailscale } from '../lib/core.mjs';
 
 export function parseLaunchctlPrint(text) {
@@ -105,7 +106,13 @@ export default {
       if (!ok) findings.push(finding(`link:${link}`, 'crit', t('host.linkBroken', { link }), target ? `→ ${target}` : t('host.notSymlink')));
     }
 
-    const metrics = { [t('metric.disk')]: `${df.usedPct}%`, [t('metric.freeMem')]: `${freePct}%` };
+    const uptimeMinutes = Math.floor(os.uptime() / 60);
+    const metrics = {
+      [t('metric.disk')]: `${df.usedPct}%`,
+      [t('metric.freeMem')]: `${freePct}%`,
+      [t('metric.uptime')]: t('metric.uptimeValue', { hours: Math.floor(uptimeMinutes / 60), minutes: uptimeMinutes % 60 }),
+      [t('metric.load')]: os.loadavg().map(value => value.toFixed(2)).join(' / '),
+    };
     if (services.length) metrics[t('metric.services')] = `${running}/${services.length}`;
     return { findings, actions: actionsTaken.filter(a => a.done || a.reason === 'cooldown'), metrics, evidence: evidence.join('\n') };
   },
